@@ -1,0 +1,5 @@
+pyusb>=1.2
+libusb-package>=1.0
+matplotlib>=3.7
+openpyxl>=3.1
+pyserial>=3.5

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1565c0">
+<title>iLab Free Mobile</title>
+<style>
+  :root { --bg:#f4f6f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --accent:#1565c0;
+          --ok:#2e7d32; --warn:#e65100; --grid:#e6e9ef; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         background:var(--bg); color:var(--text); }
+  header { position:sticky; top:0; z-index:5; background:var(--accent); color:#fff;
+           padding:10px 14px calc(10px) 14px; box-shadow:0 2px 6px rgba(0,0,0,.15); }
+  header h1 { margin:0; font-size:18px; font-weight:600; }
+  #status { font-size:13px; opacity:.9; margin-top:2px; min-height:16px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; padding:10px 12px; }
+  button, select { font:inherit; font-size:15px; border:0; border-radius:10px; padding:10px 14px;
+           background:#fff; color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  button.primary { background:var(--accent); color:#fff; }
+  button.go { background:var(--ok); color:#fff; }
+  button.stop { background:#c62828; color:#fff; }
+  button:disabled { opacity:.45; }
+  .grow { flex:1 1 auto; }
+  #cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px;
+           padding:0 12px 16px; }
+  .card { background:var(--card); border-radius:14px; padding:10px 12px 8px;
+          box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .card.off { opacity:.55; }
+  .card.empty canvas, .card.off canvas { display:none; }
+  .card .top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .card .name { font-size:14px; color:var(--muted); }
+  .card .val { font-size:28px; font-weight:650; font-variant-numeric:tabular-nums; }
+  .card .unit { font-size:15px; color:var(--muted); margin-left:3px; font-weight:400; }
+  .card canvas { width:100%; height:120px; display:block; margin-top:4px; }
+  .card .row2 { display:flex; justify-content:space-between; align-items:center; gap:6px;
+                margin-top:4px; font-size:13px; color:var(--muted); }
+  .card select { font-size:13px; padding:5px 8px; box-shadow:none; background:#f0f2f6; }
+  .hint { margin:6px 12px 14px; padding:10px 12px; border-radius:12px; background:#fff8e1;
+          color:#6d4c00; font-size:14px; line-height:1.35; }
+  .hint.err { background:#ffebee; color:#8e0000; }
+  footer { text-align:center; color:var(--muted); font-size:12px; padding:8px 0 24px; }
+  label.chk { display:flex; align-items:center; gap:6px; font-size:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>iLab Free Mobile</h1>
+  <div id="status">Не підключено</div>
+</header>
+
+<div class="bar">
+  <button id="btnConn" class="primary">🔗 Підключити</button>
+  <button id="btnStart" class="go" disabled>▶ Старт</button>
+  <button id="btnStop" class="stop" disabled>■ Стоп</button>
+  <select id="interval" title="Інтервал">
+    <option value="1">1 с</option>
+    <option value="0.2">0.2 с (швидко)</option>
+    <option value="2">2 с</option>
+    <option value="5">5 с</option>
+    <option value="10">10 с</option>
+    <option value="60">1 хв</option>
+  </select>
+  <button id="btnCsv" disabled>💾 CSV</button>
+  <button id="btnClear">Очистити</button>
+</div>
+<div id="hint" class="hint" hidden></div>
+<div id="cards"></div>
+<footer>iLab Free · вільне ПЗ (MIT) для реєстратора Register iLab · BLE: Microchip BM77</footer>
+
+<script>
+"use strict";
+// ---------------- протокол (див. ilab/protocol.py) ----------------
+const SVC = "49535343-fe7d-4ae5-8fa9-9fafd205e455";
+const CH_TX = "49535343-1e4d-4bd9-ba61-23c647249616";   // плата -> телефон (notify)
+const CH_RX = "49535343-8841-43f4-a8d4-ecbe34729bb3";   // телефон -> плата (write)
+const PAD = [0x55, 0x55, 0x55, 0x55, 0x55];
+const T64 = [[67,-50],[71,-49],[75,-48],[80,-47],[85,-46],[90,-45],[96,-44],[102,-43],[108,-42],[115,-41],[122,-40],[130,-39],[138,-38],[147,-37],[156,-36],[166,-35],[177,-34],[188,-33],[199,-32],[211,-31],[224,-30],[237,-29],[251,-28],[265,-27],[281,-26],[297,-25],[313,-24],[331,-23],[349,-22],[368,-21],[388,-20],[408,-19],[430,-18],[452,-17],[475,-16],[499,-15],[524,-14],[549,-13],[576,-12],[604,-11],[632,-10],[661,-9],[691,-8],[723,-7],[755,-6],[787,-5],[821,-4],[856,-3],[891,-2],[927,-1],[964,0],[1002,1],[1041,2],[1080,3],[1120,4],[1161,5],[1202,6],[1244,7],[1286,8],[1329,9],[1372,10],[1416,11],[1460,12],[1505,13],[1550,14],[1595,15],[1640,16],[1685,17],[1731,18],[1776,19],[1822,20],[1867,21],[1913,22],[1958,23],[2003,24],[2048,25],[2093,26],[2137,27],[2181,28],[2225,29],[2268,30],[2311,31],[2353,32],[2395,33],[2436,34],[2477,35],[2517,36],[2556,37],[2595,38],[2633,39],[2671,40],[2708,41],[2744,42],[2780,43],[2815,44],[2849,45],[2882,46],[2915,47],[2947,48],[2979,49],[3009,50],[3039,51],[3068,52],[3097,53],[3125,54],[3152,55],[3179,56],[3205,57],[3230,58],[3254,59],[3278,60],[3301,61],[3324,62],[3346,63],[3367,64],[3388,65],[3408,66],[3428,67],[3447,68],[3466,69],[3484,70],[3501,71],[3518,72],[3535,73],[3551,74],[3566,75],[3581,76],[3596,77],[3610,78],[3624,79],[3637,80],[3650,81],[3663,82],[3675,83],[3687,84],[3698,85],[3710,86],[3721,87],[3731,88],[3741,89],[3751,90],[3761,91],[3770,92],[3779,93],[3788,94],[3796,95],[3805,96],[3812,97],[3820,98],[3828,99],[3835,100],[3842,101],[3849,102],[3855,103],[3862,104],[3868,105],[3874,106],[3880,107],[3886,108],[3892,109],[3897,110],[3902,111],[3907,112],[3912,113],[3917,114],[3921,115],[3926,116],[3931,117],[3935,118],[3939,119],[3941,120],[3945,121],[3949,122],[3953,123],[3957,124],[3961,125],[3964,126],[3967,127],[3970,128],[3973,129],[3977,130],[3979,131],[3982,132],[3985,133],[3987,134],[3990,135],[3992,136],[3995,137],[3997,138],[4000,139],[4002,140],[4004,141],[4006,142],[4009,143],[4011,144],[4013,145],[4015,146],[4016,147],[4018,148],[4020,149],[4021,150]];
+
+function build(cmd, payload = []) {
+  const body = [cmd, 2 + payload.length, ...payload];
+  const cs = body.reduce((a, b) => a + b, 0) & 0xff;
+  return new Uint8Array([...body, cs, ...PAD]);
+}
+const u16 = (p, i) => p[i] | (p[i + 1] << 8);
+const u32 = (p, i) => (p[i] | (p[i + 1] << 8) | (p[i + 2] << 16) | (p[i + 3] << 24)) >>> 0;
+
+// відомі типи пакетів і їхні N (довжина = N + 1) — захист від хибних збігів у потоці
+const VALID = { 0xB0: [2], 0xB2: [0x1B, 0x23, 0x3F], 0xB3: [0x3A], 0xB5: [0x3F], 0xA0: [7], 0xFD: [3] };
+// склеювання уламків BLE у пакети [тип][N][...][сума]
+let rx = [];
+function feed(bytes) {
+  rx.push(...bytes);
+  const out = [];
+  let i = 0;
+  while (i + 2 < rx.length) {
+    const t = rx[i], n = rx[i + 1];
+    if (VALID[t] && VALID[t].includes(n)) {
+      if (i + n >= rx.length) break;                 // чекаємо решту пакета
+      let s = 0; for (let k = 0; k < n; k++) s += rx[i + k];
+      if ((s & 0xff) === rx[i + n]) { out.push(rx.slice(i, i + n + 1)); i += n + 1; continue; }
+    }
+    i++;
+  }
+  rx = rx.slice(i);
+  if (rx.length > 512) rx = rx.slice(-128);
+  return out;
+}
+
+function parseSample(p) {
+  const t = p[0], n = p[1];
+  const ports = (o) => Array.from({ length: 8 }, (_, k) => u16(p, o + 2 * k));
+  if (t === 0xB2 && n === 0x3F) return { adc: ports(3), bi: [0,1,2,3,4,5].map(k => u32(p, 35 + 4 * k)), kind: t };
+  if (t === 0xB3 && n === 0x3A) return { adc: ports(2), bi: [0,1,2,3,4,5].map(k => u32(p, 34 + 4 * k)), kind: t };
+  if (t === 0xB2 && n === 0x23) return { adc: ports(3), bi: [u32(p, 19), null, u32(p, 23), null, u32(p, 27), null], kind: t };
+  if (t === 0xB2 && n === 0x1B) return { adc: [0, 0, ...Array.from({ length: 6 }, (_, k) => u16(p, 3 + 2 * k))], bi: null, kind: t };
+  return null;
+}
+
+function interp(tab, x) {
+  if (!x || x <= tab[0][0] || x >= tab[tab.length - 1][0]) return null;
+  let lo = 0, hi = tab.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (tab[m][0] <= x) lo = m; else hi = m; }
+  const [x1, y1] = tab[lo], [x2, y2] = tab[hi];
+  return y1 + (x - x1) * (y2 - y1) / (x2 - x1);
+}
+
+// ---------------- канали ----------------
+const PORT_TYPES = {
+  temp: { name: "Температура", unit: "°C", d: 1, f: (a) => interp(T64, a) },
+  volt: { name: "Напруга АЦП", unit: "В", d: 3, f: (a) => a ? a * 3.3 / 4095 : null },
+  raw:  { name: "Сирий АЦП", unit: "", d: 0, f: (a) => a || null },
+};
+const SENSOR_IDS = { 64: "temp" };
+const BUILTIN = [
+  { key: "light", name: "Освітленість", unit: "лк", d: 0, idx: 0, k: 1,   color: "#d9a400", lo: 0, hi: 200000 },
+  { key: "t_in",  name: "Температура (вбуд.)", unit: "°C", d: 1, idx: 1, k: 0.1, color: "#d0402b", lo: -40, hi: 85 },
+  { key: "rh_in", name: "Вологість (вбуд.)", unit: "%", d: 1, idx: 2, k: 0.1, color: "#1f9e89", lo: 0, hi: 100 },
+  { key: "uv",    name: "Ультрафіолет", unit: "у.о.", d: 0, idx: 3, k: 1, color: "#7b3fbf", lo: 0, hi: 10000 },
+  { key: "press", name: "Тиск повітря", unit: "кПа", d: 1, idx: 4, k: 0.1, color: "#2a7ab0", lo: 30, hi: 120 },
+  { key: "hr",    name: "Пульс", unit: "уд/хв", d: 0, idx: 5, k: 1, color: "#c2185b", lo: 0, hi: 250 },
+];
+const PORT_COLORS = ["#e65100", "#2e7d32", "#6a1b9a", "#00838f"];
+const state = {
+  portType: [1, 2, 3, 4].map(() => "temp"),
+  portId: [null, null, null, null],
+  enabled: new Set(["port1", "port2", "port3", "port4", "light", "t_in", "rh_in", "press"]),
+  samples: [],         // {t, adc, bi, time}
+  t0: null, running: false,
+};
+try {
+  const saved = JSON.parse(localStorage.getItem("ilab_mobile") || "{}");
+  if (saved.enabled) state.enabled = new Set(saved.enabled);
+  if (saved.portType) state.portType = saved.portType;
+  if (saved.interval) document.getElementById("interval").value = saved.interval;
+} catch (e) {}
+function saveCfg() {
+  try { localStorage.setItem("ilab_mobile", JSON.stringify({
+    enabled: [...state.enabled], portType: state.portType,
+    interval: document.getElementById("interval").value })); } catch (e) {}
+}
+
+function channels() {
+  const chs = [0, 1, 2, 3].map(i => {
+    const t = PORT_TYPES[state.portType[i]] || PORT_TYPES.temp;
+    return { key: `port${i + 1}`, port: i, name: `Порт ${i + 1}`, unit: t.unit, d: t.d,
+             color: PORT_COLORS[i], get: s => t.f(s.adc[2 * i]) };
+  });
+  return chs.concat(BUILTIN.map(b => ({ ...b,
+    get: s => {
+      if (!s.bi || s.bi[b.idx] == null) return null;
+      const v = s.bi[b.idx] * b.k;
+      return (v < b.lo || v > b.hi) ? null : v;          // неможливе значення — відкидаємо
+    } })));
+}
+
+// ---------------- інтерфейс ----------------
+const $ = id => document.getElementById(id);
+const cardsEl = $("cards");
+const cardEls = {};
+function buildCards() {
+  cardsEl.innerHTML = "";
+  for (const ch of channels()) {
+    const c = document.createElement("div");
+    c.className = "card" + (state.enabled.has(ch.key) ? "" : " off");
+    c.innerHTML = `<div class="top"><span class="name"></span>
+      <span><span class="val">—</span><span class="unit"></span></span></div>
+      <canvas></canvas><div class="row2"></div>`;
+    c.querySelector(".name").textContent = ch.name;
+    c.querySelector(".unit").textContent = ch.unit;
+    const row2 = c.querySelector(".row2");
+    const lab = document.createElement("label"); lab.className = "chk";
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = state.enabled.has(ch.key);
+    cb.onchange = () => { cb.checked ? state.enabled.add(ch.key) : state.enabled.delete(ch.key);
+                          c.classList.toggle("off", !cb.checked); saveCfg(); draw(); };
+    lab.append(cb, document.createTextNode("показувати"));
+    row2.append(lab);
+    if (ch.port != null) {
+      const sel = document.createElement("select");
+      for (const [k, t] of Object.entries(PORT_TYPES)) sel.add(new Option(t.name, k));
+      sel.value = state.portType[ch.port];
+      sel.onchange = () => { state.portType[ch.port] = sel.value; saveCfg(); buildCards(); draw(); };
+      row2.append(sel);
+    }
+    cardsEl.append(c);
+    cardEls[ch.key] = { c, val: c.querySelector(".val"), cv: c.querySelector("canvas"),
+                        name: c.querySelector(".name") };
+  }
+  updatePortNames();
+}
+function updatePortNames() {
+  state.portId.forEach((id, i) => {
+    const e = cardEls[`port${i + 1}`]; if (!e) return;
+    e.c.classList.toggle("empty", id === 0);
+    e.name.textContent = `Порт ${i + 1}` + (id === null ? "" : id === 0 ? " — порожній"
+      : id === -1 ? " — датчик" : ` — ${SENSOR_IDS[id] ? PORT_TYPES[SENSOR_IDS[id]].name : "датчик ID " + id}`);
+  });
+}
+
+function fmt(v, d) { return v == null || isNaN(v) ? "—" : v.toFixed(d).replace(".", ","); }
+
+function drawChart(cv, xs, ys, color) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const L = 40, B = 18, T = 6, R = 6;
+  const pts = []; for (let i = 0; i < xs.length; i++) if (ys[i] != null) pts.push([xs[i], ys[i]]);
+  g.font = "11px system-ui"; g.fillStyle = "#8a93a3"; g.strokeStyle = "#e6e9ef"; g.lineWidth = 1;
+  if (pts.length < 1) { g.fillText("немає даних", L, h / 2); return; }
+  let x0 = pts[0][0], x1 = pts[pts.length - 1][0]; if (x1 - x0 < 10) x1 = x0 + 10;
+  let y0 = Math.min(...pts.map(p => p[1])), y1 = Math.max(...pts.map(p => p[1]));
+  if (y1 - y0 < 1e-9) { y0 -= 1; y1 += 1; } const pad = (y1 - y0) * 0.1; y0 -= pad; y1 += pad;
+  const X = x => L + (x - x0) / (x1 - x0) * (w - L - R), Y = y => T + (1 - (y - y0) / (y1 - y0)) * (h - T - B);
+  for (let k = 0; k <= 3; k++) {
+    const yv = y0 + (y1 - y0) * k / 3, yy = Y(yv);
+    g.beginPath(); g.moveTo(L, yy); g.lineTo(w - R, yy); g.stroke();
+    const r = Math.abs(y1 - y0), dec = r < 1 ? 2 : r < 10 ? 1 : 0;
+    g.fillText(yv.toFixed(dec), 2, yy + 4);
+  }
+  for (let k = 0; k <= 4; k++) {
+    const xv = x0 + (x1 - x0) * k / 4, xx = X(xv);
+    g.fillText(xv < 120 ? xv.toFixed(0) + " с" : (xv / 60).toFixed(1) + " хв", Math.min(xx - 8, w - 34), h - 4);
+  }
+  g.strokeStyle = color; g.lineWidth = 2; g.beginPath();
+  pts.forEach(([x, y], i) => i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y))); g.stroke();
+}
+
+let drawPending = false;
+function draw() {
+  if (drawPending) return; drawPending = true;
+  requestAnimationFrame(() => {
+    drawPending = false;
+    const last = state.samples[state.samples.length - 1];
+    const xs = state.samples.map(s => s.t);
+    for (const ch of channels()) {
+      const e = cardEls[ch.key]; if (!e) continue;
+      e.val.textContent = last ? fmt(ch.get(last), ch.d) : "—";
+      if (state.enabled.has(ch.key)) drawChart(e.cv, xs, state.samples.map(s => ch.get(s)), ch.color);
+    }
+  });
+}
+window.addEventListener("resize", draw);
+
+function hint(text, err = false) { const h = $("hint"); h.hidden = !text; h.textContent = text || ""; h.classList.toggle("err", err); }
+function status(t) { $("status").textContent = t; }
+
+// ---------------- BLE ----------------
+let dev = null, rxChar = null, writeQ = Promise.resolve();
+let pollTimer = null, infoTimer = null, extTimer = null, gotExt = false, lastEmit = 0;
+const intervalSec = () => parseFloat($("interval").value);
+
+function send(cmd, payload) {
+  const data = build(cmd, payload);
+  writeQ = writeQ.then(() => rxChar && rxChar.writeValue(data)).catch(e => console.warn("write", e));
+  return writeQ;
+}
+
+function onPacket(p) {
+  if (p[0] === 0xB5 && p.length >= 4) {
+    const port = p[2], id = p[3];
+    if (port >= 1 && port <= 4 && state.portId[port - 1] !== id) {
+      state.portId[port - 1] = id;
+      if (id && SENSOR_IDS[id] && state.portType[port - 1] !== SENSOR_IDS[id]) {
+        state.portType[port - 1] = SENSOR_IDS[id]; saveCfg(); buildCards();
+      }
+      if (id) { state.enabled.add(`port${port}`); const e = cardEls[`port${port}`];
+                if (e) { e.c.classList.remove("off"); e.c.querySelector("input").checked = true; } }
+      updatePortNames(); draw();
+    }
+    return;
+  }
+  if (p[0] !== 0xB2 && p[0] !== 0xB3) return;
+  const s = parseSample(p); if (!s) return;
+  if (s.bi && p[1] !== 0x23) gotExt = true;
+  if (!state.running) return;
+  const fast = intervalSec() < 1;
+  if (fast ? p[0] !== 0xB3 : p[0] !== 0xB2) return;
+  const now = performance.now() / 1000;
+  if (!fast && now - lastEmit < intervalSec() - 0.2) return;
+  lastEmit = now;
+  if (state.t0 === null) state.t0 = now;
+  state.samples.push({ t: +(now - state.t0).toFixed(2), adc: s.adc, bi: s.bi, time: new Date() });
+  // датчик переставили під час запису: визначаємо наявність за самими даними
+  for (let i = 0; i < 4; i++) {
+    const has = s.adc[2 * i] > 0;
+    if (has && state.portId[i] === 0) { state.portId[i] = -1; updatePortNames(); }
+    if (!has && state.portId[i] !== 0 && state.portId[i] !== null) { state.portId[i] = 0; updatePortNames(); }
+  }
+  $("btnCsv").disabled = false;
+  draw();
+}
+
+async function connect() {
+  if (dev && dev.gatt.connected) { await disconnect(); return; }
+  if (!navigator.bluetooth) {
+    hint("Цей браузер не підтримує Web Bluetooth. Android: відкрийте сторінку в Chrome. " +
+         "iPhone/iPad: у безкоштовному браузері «Bluefy».", true); return;
+  }
+  try {
+    status("Пошук логера…");
+    dev = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SVC] }, { namePrefix: "TY" }], optionalServices: [SVC] });
+    dev.addEventListener("gattserverdisconnected", onDisconnected);
+    status(`Підключення до ${dev.name || "логера"}…`);
+    const server = await dev.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    rxChar = await svc.getCharacteristic(CH_RX);
+    const tx = await svc.getCharacteristic(CH_TX);
+    await tx.startNotifications();
+    tx.addEventListener("characteristicvaluechanged", e => {
+      const v = e.target.value; const bytes = [];
+      for (let i = 0; i < v.byteLength; i++) bytes.push(v.getUint8(i));
+      feed(bytes).forEach(onPacket);
+    });
+    await send(0xA0); await sleep(600); await send(0xA5);
+    infoTimer = setInterval(() => { if (!state.running) send(0xA5); }, 4000);
+    status(`Підключено: ${dev.name || "логер"} (${dev.id ? "BLE" : ""})`);
+    hint("");
+    $("btnConn").textContent = "Відключити"; $("btnStart").disabled = false;
+  } catch (e) {
+    status("Не підключено");
+    if (e.name !== "NotFoundError") hint("Помилка підключення: " + e.message, true);
+  }
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function disconnect() {
+  if (state.running) await stop();
+  try { await send(0xA1); } catch (e) {}
+  if (dev && dev.gatt.connected) dev.gatt.disconnect();
+}
+function onDisconnected() {
+  clearInterval(pollTimer); clearInterval(infoTimer); clearInterval(extTimer);
+  state.running = false; rxChar = null;
+  status("Відключено"); $("btnConn").textContent = "🔗 Підключити";
+  $("btnStart").disabled = true; $("btnStop").disabled = true;
+}
+
+let wakeLock = null;
+async function start() {
+  if (state.samples.length && !confirm("Почати новий дослід? Поточні дані буде очищено.")) return;
+  clear(); saveCfg();
+  state.running = true; lastEmit = 0; gotExt = false;
+  await send(0xA8, [3]); await send(0xA2); await send(0xA3);
+  extTimer = setInterval(() => { if (!gotExt) send(0xA3); }, 3000);
+  if (intervalSec() < 1) pollTimer = setInterval(() => send(0xA3), 250);
+  $("btnStart").disabled = true; $("btnStop").disabled = false;
+  status("Вимірювання…");
+  if (window.__androidKeepScreen) window.__androidKeepScreen(true);
+  else try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+async function stop() {
+  clearInterval(pollTimer); clearInterval(extTimer); pollTimer = extTimer = null;
+  state.running = false;
+  await send(0xA4);
+  $("btnStart").disabled = !(dev && dev.gatt.connected); $("btnStop").disabled = true;
+  status("Зупинено");
+  if (window.__androidKeepScreen) window.__androidKeepScreen(false);
+  try { wakeLock && wakeLock.release(); } catch (e) {}
+}
+function clear() { state.samples = []; state.t0 = null; $("btnCsv").disabled = true; draw(); }
+
+function exportCsv() {
+  const chs = channels().filter(c => state.enabled.has(c.key));
+  const head = ["Час", "t, с", ...chs.map(c => c.name + (c.unit ? ", " + c.unit : ""))];
+  const lines = [head.join(";")];
+  for (const s of state.samples) {
+    lines.push([s.time.toLocaleTimeString("uk-UA"), String(s.t).replace(".", ","),
+                ...chs.map(c => { const v = c.get(s); return v == null ? "" : String(+v.toFixed(4)).replace(".", ","); })].join(";"));
+  }
+  const d = new Date(), z = n => String(n).padStart(2, "0");
+  const fname = `дослід_${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}.csv`;
+  const text = "\ufeff" + lines.join("\r\n");
+  if (window.__androidSaveCsv) { window.__androidSaveCsv(fname, text); return; }   // Android-застосунок
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.download = fname;
+  a.href = URL.createObjectURL(blob); document.body.append(a); a.click(); a.remove();
+}
+
+$("btnConn").onclick = connect;
+$("btnStart").onclick = start;
+$("btnStop").onclick = stop;
+$("btnCsv").onclick = exportCsv;
+$("btnClear").onclick = () => { if (!state.samples.length || confirm("Очистити дані?")) clear(); };
+$("interval").onchange = saveCfg;
+buildCards(); draw();
+if (!navigator.bluetooth) hint("Для роботи потрібен браузер з Web Bluetooth: Chrome на Android " +
+  "або «Bluefy» на iPhone. Сторінка має бути відкрита через https://", true);
+</script>
+</body>
+</html>
